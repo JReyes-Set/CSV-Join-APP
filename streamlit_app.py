@@ -1,124 +1,86 @@
+# Import required libraries
 import streamlit as st
-
-st.title("🎈 My new app")
-st.write(
-    "Let's start building! For help and inspiration, head over to [docs.streamlit.io](https://docs.streamlit.io/)."
-)
-# STEP 1: Install necessary packages (only needed once per session)
-# - pandas: used for handling and merging the CSV data
-# - ipywidgets: used for interactive dropdowns, checkboxes, buttons in Colab
-!pip install -q pandas ipywidgets
-
-# STEP 2: Import required Python libraries
 import pandas as pd
-import io
-import ipywidgets as widgets
-from IPython.display import display, clear_output
-from google.colab import files
+from io import StringIO
 
-# STEP 3: Upload CSV files
-# ✅ How to use: This block will prompt you to upload your two CSV files.
-# - You must select the same column from each file later for the join.
-# - Make sure both CSVs have headers (column names) in the first row.
+# Set up the Streamlit app layout and title
+st.set_page_config(page_title="CSV File Joiner", layout="wide")
+st.title("🔗 CSV File Joiner")
 
-print("📁 Upload File 1:")
-upload1 = files.upload()  # Opens file picker for the first CSV
-df1 = pd.read_csv(io.BytesIO(next(iter(upload1.values()))))  # Reads file into a DataFrame
+# Brief description of what the app does
+st.write("Upload two CSV files and choose how to join them using inner, left, right, or outer joins. "
+         "You can also remove duplicate rows before merging.")
 
-print("📁 Upload File 2:")
-upload2 = files.upload()  # Opens file picker for the second CSV
-df2 = pd.read_csv(io.BytesIO(next(iter(upload2.values()))))  # Reads file into a DataFrame
+# -----------------------------------------
+# STEP 1: Upload both CSV files
+# Users will be prompted to upload File 1 and File 2
+# -----------------------------------------
 
-# STEP 4: Create interactive controls for join options
-# ✅ How to use: Select how you want to join the files.
-# - Remove duplicates: Check this to remove exact duplicate rows before joining
-# - Join type: Choose from 'inner', 'left', 'right', or 'outer' joins
-# - File 1/2 Columns: Select the matching column from each file to use as join keys
+uploaded_file1 = st.file_uploader("📁 Upload File 1", type=["csv"])
+uploaded_file2 = st.file_uploader("📁 Upload File 2", type=["csv"])
 
-remove_duplicates_checkbox = widgets.Checkbox(
-    value=True, 
-    description='Remove Duplicates'
-)
+# Proceed only if both files are uploaded
+if uploaded_file1 and uploaded_file2:
+    # Read both uploaded files into DataFrames
+    df1 = pd.read_csv(uploaded_file1)
+    df2 = pd.read_csv(uploaded_file2)
 
-join_type_dropdown = widgets.Dropdown(
-    options=['inner', 'left', 'right', 'outer'],
-    description='Join Type:'
-)
+    st.subheader("⚙️ Join Configuration")
 
-col1_dropdown = widgets.Dropdown(
-    options=df1.columns.tolist(), 
-    description='File 1 Column:'
-)
+    # -----------------------------------------
+    # STEP 2: Join settings UI
+    # Let user pick:
+    # - Column from each file
+    # - Join type
+    # - Whether to remove duplicates
+    # -----------------------------------------
 
-col2_dropdown = widgets.Dropdown(
-    options=df2.columns.tolist(), 
-    description='File 2 Column:'
-)
+    col1 = st.selectbox("Select join column from File 1", df1.columns)
+    col2 = st.selectbox("Select join column from File 2", df2.columns)
+    join_type = st.selectbox("Select Join Type", ["inner", "left", "right", "outer"])
+    remove_duplicates = st.checkbox("✅ Remove duplicate rows before joining", value=True)
 
-run_button = widgets.Button(
-    description='🔗 Perform Join', 
-    button_style='success'
-)
+    # -----------------------------------------
+    # STEP 3: Perform the join when button is clicked
+    # - Join the two DataFrames
+    # - Show preview
+    # - Provide download button
+    # -----------------------------------------
 
-output = widgets.Output()  # Used to show the result and messages below the button
-
-# STEP 5: Join logic and result preview
-# ✅ What this code does:
-# - When the "Perform Join" button is clicked:
-#   1. It takes your selected options.
-#   2. Drops duplicates if requested.
-#   3. Joins the two files based on your column and type selection.
-#   4. Previews the first 50 rows.
-#   5. Lets you download the merged result as a new CSV file.
-
-def perform_join(b):
-    with output:
-        clear_output()
-        
-        # Get user-selected column names and join type
-        col1 = col1_dropdown.value
-        col2 = col2_dropdown.value
-        join_type = join_type_dropdown.value
-
-        # Apply duplicate removal if checked
-        df1_clean = df1.drop_duplicates() if remove_duplicates_checkbox.value else df1
-        df2_clean = df2.drop_duplicates() if remove_duplicates_checkbox.value else df2
-
+    if st.button("🔗 Perform Join"):
         try:
-            # Perform the merge using pandas
+            # Optional: remove duplicates before merging
+            if remove_duplicates:
+                df1 = df1.drop_duplicates()
+                df2 = df2.drop_duplicates()
+
+            # Perform the join using pandas
             result = pd.merge(
-                df1_clean, df2_clean,
+                df1, df2,
                 how=join_type,
                 left_on=col1,
                 right_on=col2,
-                suffixes=('', '_file2')
+                suffixes=("", "_file2")
             )
-            
-            print(f"✅ Join successful! {len(result)} rows returned.\n")
-            display(result.head(50))  # Show a preview of the joined data
-            
-            # Save and prepare download
-            result.to_csv('joined_result.csv', index=False)
-            print("\n💾 Download your result:")
-            files.download('joined_result.csv')
+
+            # Show success message and preview the joined data
+            st.success(f"✅ Join successful! {len(result)} rows returned.")
+            st.dataframe(result.head(50), use_container_width=True)
+
+            # -----------------------------------------
+            # STEP 4: Enable download of the joined CSV
+            # -----------------------------------------
+            csv = result.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="💾 Download Joined CSV",
+                data=csv,
+                file_name='joined_result.csv',
+                mime='text/csv'
+            )
 
         except Exception as e:
-            print(f"❌ Error: {e}")
+            st.error(f"❌ Error during join: {e}")
 
-# Attach join function to the button click event
-run_button.on_click(perform_join)
-
-# STEP 6: Display the full UI
-# ✅ What you see here:
-# - All the join settings
-# - The preview table and download button after you click "Perform Join"
-
-display(widgets.VBox([
-    widgets.HTML("<h3>⚙️ Join Configuration</h3>"),
-    remove_duplicates_checkbox,
-    join_type_dropdown,
-    col1_dropdown,
-    col2_dropdown,
-    run_button,
-    output
-]))
+# Optional footer
+st.markdown("---")
+st.caption("Built with ❤️ using Streamlit. Developed by Joseph Reyes.")
